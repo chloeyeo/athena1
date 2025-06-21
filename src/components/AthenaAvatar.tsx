@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useAccessibility } from '../contexts/AccessibilityContext';
+import SignLanguageInterpreter from './SignLanguageInterpreter';
 
 interface AthenaAvatarProps {
   isActive: boolean;
@@ -10,80 +11,29 @@ interface AthenaAvatarProps {
 
 export default function AthenaAvatar({ isActive, isSpeaking, currentMessage }: AthenaAvatarProps) {
   const [currentExpression, setCurrentExpression] = useState<'neutral' | 'speaking' | 'thinking'>('neutral');
-  const [isSigningASL, setIsSigningASL] = useState(false);
-  const [currentSignIndex, setCurrentSignIndex] = useState(0);
   const { settings } = useAccessibility();
 
   useEffect(() => {
     if (isSpeaking) {
       setCurrentExpression('speaking');
-      if (settings.signLanguage) {
-        setIsSigningASL(true);
-        // Stop signing after message duration
-        const duration = (currentMessage?.length || 50) * 100;
-        setTimeout(() => setIsSigningASL(false), duration);
-      }
     } else {
       setCurrentExpression('neutral');
-      setIsSigningASL(false);
     }
-  }, [isSpeaking, currentMessage, settings.signLanguage]);
-
-  // Animate through different sign positions when signing
-  useEffect(() => {
-    if (isSigningASL && currentMessage) {
-      const interval = setInterval(() => {
-        setCurrentSignIndex(prev => (prev + 1) % currentMessage.length);
-      }, 500);
-      return () => clearInterval(interval);
-    }
-  }, [isSigningASL, currentMessage]);
-
-  // Sign language hand positions for different letters/concepts
-  const getSignPosition = () => {
-    if (!isSigningASL || !currentMessage) return { leftX: 0, leftY: 0, rightX: 0, rightY: 0, leftRotate: 0, rightRotate: 0 };
-    
-    const char = currentMessage[currentSignIndex]?.toLowerCase() || 'a';
-    
-    // Enhanced ASL-inspired hand positions for different letters
-    const positions: Record<string, { leftX: number; leftY: number; rightX: number; rightY: number; leftRotate: number; rightRotate: number }> = {
-      'a': { leftX: -30, leftY: -10, rightX: 30, rightY: -10, leftRotate: -15, rightRotate: 15 },
-      'b': { leftX: -20, leftY: -20, rightX: 40, rightY: -5, leftRotate: 0, rightRotate: 30 },
-      'c': { leftX: -40, leftY: 0, rightX: 20, rightY: -15, leftRotate: -30, rightRotate: 0 },
-      'd': { leftX: -15, leftY: -25, rightX: 35, rightY: 0, leftRotate: 10, rightRotate: -20 },
-      'e': { leftX: -35, leftY: -5, rightX: 25, rightY: -20, leftRotate: -20, rightRotate: 25 },
-      'f': { leftX: -25, leftY: -15, rightX: 45, rightY: -10, leftRotate: 5, rightRotate: -15 },
-      'g': { leftX: -45, leftY: 5, rightX: 15, rightY: -25, leftRotate: -35, rightRotate: 20 },
-      'h': { leftX: -20, leftY: -30, rightX: 40, rightY: 5, leftRotate: 15, rightRotate: -25 },
-      'i': { leftX: -10, leftY: -20, rightX: 50, rightY: -15, leftRotate: 25, rightRotate: 10 },
-      'j': { leftX: -50, leftY: -10, rightX: 10, rightY: -30, leftRotate: -40, rightRotate: 35 },
-      'k': { leftX: -30, leftY: 10, rightX: 30, rightY: -25, leftRotate: -10, rightRotate: 40 },
-      'l': { leftX: -15, leftY: -35, rightX: 45, rightY: 10, leftRotate: 30, rightRotate: -30 },
-      'm': { leftX: -40, leftY: -15, rightX: 20, rightY: -5, leftRotate: -25, rightRotate: 15 },
-      'n': { leftX: -25, leftY: 15, rightX: 35, rightY: -20, leftRotate: 20, rightRotate: -10 },
-      'o': { leftX: -35, leftY: -25, rightX: 35, rightY: -25, leftRotate: 0, rightRotate: 0 },
-      'p': { leftX: -20, leftY: 20, rightX: 40, rightY: -30, leftRotate: 35, rightRotate: 25 },
-      'q': { leftX: -45, leftY: 0, rightX: 15, rightY: 15, leftRotate: -30, rightRotate: -35 },
-      'r': { leftX: -30, leftY: -20, rightX: 30, rightY: 10, leftRotate: 10, rightRotate: -40 },
-      's': { leftX: -10, leftY: 10, rightX: 50, rightY: -20, leftRotate: 40, rightRotate: 20 },
-      't': { leftX: -40, leftY: 15, rightX: 25, rightY: -30, leftRotate: -15, rightRotate: 30 },
-      'u': { leftX: -25, leftY: -10, rightX: 35, rightY: 15, leftRotate: 25, rightRotate: -20 },
-      'v': { leftX: -35, leftY: 5, rightX: 45, rightY: -25, leftRotate: -20, rightRotate: 35 },
-      'w': { leftX: -15, leftY: -15, rightX: 25, rightY: 20, leftRotate: 15, rightRotate: -25 },
-      'x': { leftX: -50, leftY: -20, rightX: 50, rightY: -20, leftRotate: -45, rightRotate: 45 },
-      'y': { leftX: -30, leftY: 20, rightX: 30, rightY: 20, leftRotate: 30, rightRotate: -30 },
-      'z': { leftX: -20, leftY: -25, rightX: 20, rightY: 25, leftRotate: -35, rightRotate: 35 },
-      ' ': { leftX: 0, leftY: 0, rightX: 0, rightY: 0, leftRotate: 0, rightRotate: 0 }, // Pause
-      default: { leftX: -15, leftY: -10, rightX: 15, rightY: -10, leftRotate: 0, rightRotate: 0 }
-    };
-    
-    return positions[char] || positions.default;
-  };
-
-  const signPosition = getSignPosition();
+  }, [isSpeaking, currentMessage]);
 
   return (
-    <div className="flex flex-col items-center justify-center h-full px-4">
+    <div className="flex flex-col items-center justify-center h-full px-4 relative">
+      {/* Sign Language Interpreter - positioned to the side */}
+      {settings.signLanguage && currentMessage && (
+        <div className="absolute top-4 right-4 z-10">
+          <SignLanguageInterpreter 
+            message={currentMessage}
+            language={settings.signLanguageType}
+            isActive={isSpeaking}
+          />
+        </div>
+      )}
+
       {/* Avatar */}
       <motion.div
         className="relative"
@@ -143,47 +93,6 @@ export default function AthenaAvatar({ isActive, isSpeaking, currentMessage }: A
             >
               <div className="w-6 h-1.5 sm:w-7 sm:h-1.5 md:w-8 md:h-2 bg-white rounded-full" />
             </motion.div>
-
-            {/* Sign Language Hands - Integrated into main avatar */}
-            {settings.signLanguage && (
-              <>
-                {/* Left Hand */}
-                <motion.div
-                  className="absolute w-4 h-6 sm:w-5 sm:h-7 md:w-6 md:h-8 bg-blue-200 rounded-full"
-                  style={{
-                    left: '5%',
-                    top: '55%',
-                  }}
-                  animate={{
-                    x: isSigningASL ? signPosition.leftX : 0,
-                    y: isSigningASL ? signPosition.leftY : 0,
-                    rotate: isSigningASL ? signPosition.leftRotate : 0,
-                  }}
-                  transition={{
-                    duration: 0.4,
-                    ease: "easeInOut"
-                  }}
-                />
-                
-                {/* Right Hand */}
-                <motion.div
-                  className="absolute w-4 h-6 sm:w-5 sm:h-7 md:w-6 md:h-8 bg-blue-200 rounded-full"
-                  style={{
-                    right: '5%',
-                    top: '55%',
-                  }}
-                  animate={{
-                    x: isSigningASL ? signPosition.rightX : 0,
-                    y: isSigningASL ? signPosition.rightY : 0,
-                    rotate: isSigningASL ? signPosition.rightRotate : 0,
-                  }}
-                  transition={{
-                    duration: 0.4,
-                    ease: "easeInOut"
-                  }}
-                />
-              </>
-            )}
           </div>
 
           {/* Animated particles around avatar */}

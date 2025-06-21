@@ -30,7 +30,16 @@ export default function LiveCall() {
   }>>([]);
   
   const { settings, announceToScreenReader } = useAccessibility();
-  const { isRecording, startRecording, stopRecording, audioLevel, error: recordingError } = useAudioRecording();
+  const { 
+    isRecording, 
+    startRecording, 
+    stopRecording, 
+    audioLevel, 
+    error: recordingError,
+    isListening,
+    transcript,
+    clearTranscript
+  } = useAudioRecording();
   const { speak, stop: stopSpeaking, isSpeaking, error: speechError } = useTextToSpeech();
 
   // Auto-start recording when mic is on and call is active
@@ -41,6 +50,66 @@ export default function LiveCall() {
       stopRecording();
     }
   }, [isCallActive, isMicOn, isRecording, startRecording, stopRecording]);
+
+  // Process transcript when user stops speaking
+  useEffect(() => {
+    if (transcript && !isListening && transcript.trim().length > 0) {
+      // Add user message to conversation
+      const userMessage = {
+        speaker: 'user' as const,
+        message: transcript.trim(),
+        timestamp: new Date()
+      };
+
+      setConversation(prev => [...prev, userMessage]);
+      
+      // Generate Athena's response
+      setTimeout(() => {
+        const responses = [
+          {
+            message: "Based on the Solicitors Regulation Authority handbook, to qualify as a solicitor in England and Wales, you'll need to complete the Solicitors Qualifying Examination (SQE). This consists of SQE1, which tests functioning legal knowledge, and SQE2, which assesses practical legal skills. You'll also need qualifying work experience and meet character and suitability requirements.",
+            sources: [
+              { title: "SRA Handbook - SQE Requirements", url: "https://sra.org.uk/sqa" },
+              { title: "Solicitors Qualifying Examination Guide", url: "https://sra.org.uk/sqa-guide" }
+            ]
+          },
+          {
+            message: "For contract disputes, the first step is to review the contract terms carefully. Under English contract law, you should identify any breaches and consider remedies available. I recommend documenting all communications and attempting negotiation before litigation. The Contract Rights of Third Parties Act 1999 may also be relevant depending on the circumstances.",
+            sources: [
+              { title: "Contract Rights of Third Parties Act 1999", url: "https://legislation.gov.uk" },
+              { title: "Contract Law Principles", url: "https://gov.uk/contract-law" }
+            ]
+          },
+          {
+            message: "I understand you're asking about legal requirements. Could you please be more specific about which area of law you're interested in? I can provide detailed guidance on employment law, contract law, property law, or other legal areas with proper source citations.",
+            sources: []
+          }
+        ];
+
+        const response = responses[Math.floor(Math.random() * responses.length)];
+        const athenaMessage = {
+          speaker: 'athena' as const,
+          message: response.message,
+          timestamp: new Date(),
+          sources: response.sources
+        };
+
+        setConversation(prev => [...prev, athenaMessage]);
+        
+        if (settings.screenReader) {
+          announceToScreenReader(`Athena says: ${response.message}`);
+        }
+        
+        // Speak Athena's response if speaker is on
+        if (isSpeakerOn) {
+          speak(response.message);
+        }
+      }, 1500);
+
+      // Clear transcript after processing
+      clearTranscript();
+    }
+  }, [transcript, isListening, clearTranscript, settings.screenReader, announceToScreenReader, isSpeakerOn, speak]);
 
   const startCall = () => {
     setIsCallActive(true);
@@ -75,79 +144,15 @@ export default function LiveCall() {
     stopSpeaking();
     setIsCallActive(false);
     setConversation([]);
+    clearTranscript();
     announceToScreenReader('Call with Athena ended');
   };
 
   const toggleMic = async () => {
     if (isMicOn && isRecording) {
-      // Process the recorded audio when turning off mic
-      const audioBlob = await stopRecording();
-      if (audioBlob) {
-        // Here you would normally send to speech-to-text service
-        // For demo, we'll simulate transcription
-        simulateTranscription();
-      }
+      await stopRecording();
     }
     setIsMicOn(!isMicOn);
-  };
-
-  const simulateTranscription = () => {
-    const sampleQuestions = [
-      "What are the requirements to become a solicitor in the UK?",
-      "How do I handle a contract dispute?",
-      "What's the process for filing a patent application?",
-      "Can you explain employment law basics?",
-      "What are my rights as a tenant?"
-    ];
-    
-    const userMessage = sampleQuestions[Math.floor(Math.random() * sampleQuestions.length)];
-    
-    const newUserMessage = {
-      speaker: 'user' as const,
-      message: userMessage,
-      timestamp: new Date()
-    };
-
-    setConversation(prev => [...prev, newUserMessage]);
-    
-    // Simulate Athena's response
-    setTimeout(() => {
-      const responses = [
-        {
-          message: "Based on the Solicitors Regulation Authority handbook, to qualify as a solicitor in England and Wales, you'll need to complete the Solicitors Qualifying Examination (SQE). This consists of SQE1, which tests functioning legal knowledge, and SQE2, which assesses practical legal skills. You'll also need qualifying work experience and meet character and suitability requirements.",
-          sources: [
-            { title: "SRA Handbook - SQE Requirements", url: "https://sra.org.uk/sqa" },
-            { title: "Solicitors Qualifying Examination Guide", url: "https://sra.org.uk/sqa-guide" }
-          ]
-        },
-        {
-          message: "For contract disputes, the first step is to review the contract terms carefully. Under English contract law, you should identify any breaches and consider remedies available. I recommend documenting all communications and attempting negotiation before litigation. The Contract Rights of Third Parties Act 1999 may also be relevant depending on the circumstances.",
-          sources: [
-            { title: "Contract Rights of Third Parties Act 1999", url: "https://legislation.gov.uk" },
-            { title: "Contract Law Principles", url: "https://gov.uk/contract-law" }
-          ]
-        }
-      ];
-
-      const response = responses[Math.floor(Math.random() * responses.length)];
-      const athenaMessage = {
-        speaker: 'athena' as const,
-        message: response.message,
-        timestamp: new Date(),
-        sources: response.sources
-      };
-
-      setConversation(prev => [...prev, athenaMessage]);
-      
-      if (settings.screenReader) {
-        announceToScreenReader(`Athena says: ${response.message}`);
-      }
-      
-      // Speak Athena's response if speaker is on
-      if (isSpeakerOn) {
-        speak(response.message);
-      }
-    }, 2000);
   };
 
   const sendMessage = () => {
@@ -160,7 +165,22 @@ export default function LiveCall() {
     };
 
     setConversation(prev => [...prev, userMessage]);
-    simulateTranscription();
+    
+    // Simulate Athena's response
+    setTimeout(() => {
+      const athenaMessage = {
+        speaker: 'athena' as const,
+        message: "I received your message. Let me provide you with accurate legal guidance based on verified sources.",
+        timestamp: new Date()
+      };
+
+      setConversation(prev => [...prev, athenaMessage]);
+      
+      if (isSpeakerOn) {
+        speak(athenaMessage.message);
+      }
+    }, 1000);
+    
     setCurrentMessage('');
   };
 
@@ -218,8 +238,10 @@ export default function LiveCall() {
               {settings.transcriptionEnabled && (
                 <div className="absolute bottom-20 sm:bottom-24 left-2 right-2 sm:left-4 sm:right-4">
                   <LiveTranscript 
-                    currentMessage={currentSpeakerMessage}
+                    currentMessage={currentSpeaker === 'athena' ? currentSpeakerMessage : ''}
                     speaker={currentSpeaker}
+                    isListening={isListening && currentSpeaker === 'user'}
+                    userTranscript={transcript}
                   />
                 </div>
               )}
@@ -237,6 +259,10 @@ export default function LiveCall() {
                           style={{ width: `${audioLevel * 100}%` }}
                         />
                       </div>
+                    )}
+                    {/* Listening indicator */}
+                    {isListening && (
+                      <div className="absolute top-1 left-1 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
                     )}
                   </div>
                 ) : (
@@ -283,6 +309,10 @@ export default function LiveCall() {
                   {/* Recording indicator */}
                   {isRecording && (
                     <div className="absolute -top-1 -right-1 w-2 h-2 sm:w-3 sm:h-3 bg-red-500 rounded-full animate-pulse" />
+                  )}
+                  {/* Listening indicator */}
+                  {isListening && (
+                    <div className="absolute -top-1 -left-1 w-2 h-2 sm:w-3 sm:h-3 bg-blue-500 rounded-full animate-pulse" />
                   )}
                 </button>
                 
@@ -358,7 +388,7 @@ export default function LiveCall() {
                   }`}
                 >
                   <p className="text-xs sm:text-sm">{item.message}</p>
-                  {item.sources && (
+                  {item.sources && item.sources.length > 0 && (
                     <div className="mt-2 pt-2 border-t border-gray-200 space-y-1">
                       {item.sources.map((source, sourceIndex) => (
                         <a
@@ -379,6 +409,19 @@ export default function LiveCall() {
                 </div>
               </div>
             ))}
+            
+            {/* Show current transcript if user is speaking */}
+            {transcript && isListening && (
+              <div className="text-right">
+                <div className="inline-block max-w-[85%] sm:max-w-[80%] p-2 sm:p-3 rounded-lg bg-blue-100 text-blue-900 border-2 border-blue-300">
+                  <p className="text-xs sm:text-sm">{transcript}</p>
+                  <div className="text-xs text-blue-600 mt-1 flex items-center justify-end space-x-1">
+                    <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                    <span>Speaking...</span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
           
           {isCallActive && (
@@ -403,7 +446,13 @@ export default function LiveCall() {
                 </button>
               </div>
               <div className="mt-2 text-xs text-gray-500 text-center">
-                {isRecording ? 'Listening...' : 'Click mic to speak or type your question'}
+                {isListening ? (
+                  <span className="text-green-600 font-medium">🎤 Listening... Speak now</span>
+                ) : isRecording ? (
+                  'Ready to listen - start speaking'
+                ) : (
+                  'Click mic to speak or type your question'
+                )}
               </div>
             </div>
           )}

@@ -6,12 +6,17 @@ interface UseAudioRecordingReturn {
   stopRecording: () => Promise<Blob | null>;
   audioLevel: number;
   error: string | null;
+  isListening: boolean;
+  transcript: string;
+  clearTranscript: () => void;
 }
 
 export function useAudioRecording(): UseAudioRecordingReturn {
   const [isRecording, setIsRecording] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [transcript, setTranscript] = useState('');
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -19,10 +24,12 @@ export function useAudioRecording(): UseAudioRecordingReturn {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   const startRecording = useCallback(async () => {
     try {
       setError(null);
+      setTranscript('');
       
       // Check if getUserMedia is supported
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -63,46 +70,89 @@ export function useAudioRecording(): UseAudioRecordingReturn {
         updateAudioLevel();
       } catch (audioContextError) {
         console.warn('Audio level monitoring failed:', audioContextError);
-        // Continue without audio level monitoring
       }
 
-      // Check MediaRecorder support
-      if (!window.MediaRecorder) {
-        throw new Error('MediaRecorder not supported in this browser');
+      // Set up Web Speech API for real-time transcription
+      if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        recognitionRef.current = new SpeechRecognition();
+        
+        recognitionRef.current.continuous = true;
+        recognitionRef.current.interimResults = true;
+        recognitionRef.current.lang = 'en-US';
+        
+        recognitionRef.current.onstart = () => {
+          setIsListening(true);
+          console.log('Speech recognition started');
+        };
+        
+        recognitionRef.current.onresult = (event: any) => {
+          let finalTranscript = '';
+          let interimTranscript = '';
+          
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+              finalTranscript += transcript;
+            } else {
+              interimTranscript += transcript;
+            }
+          }
+          
+          setTranscript(finalTranscript + interimTranscript);
+        };
+        
+        recognitionRef.current.onerror = (event: any) => {
+          console.error('Speech recognition error:', event.error);
+          if (event.error !== 'no-speech') {
+            setError(`Speech recognition error: ${event.error}`);
+          }
+        };
+        
+        recognitionRef.current.onend = () => {
+          setIsListening(false);
+          console.log('Speech recognition ended');
+        };
+        
+        recognitionRef.current.start();
+      } else {
+        console.warn('Speech recognition not supported');
       }
 
-      // Try different MIME types for better compatibility
-      let mimeType = 'audio/webm;codecs=opus';
-      if (!MediaRecorder.isTypeSupported(mimeType)) {
-        mimeType = 'audio/webm';
+      // Set up MediaRecorder for backup audio recording
+      if (window.MediaRecorder) {
+        let mimeType = 'audio/webm;codecs=opus';
         if (!MediaRecorder.isTypeSupported(mimeType)) {
-          mimeType = 'audio/mp4';
+          mimeType = 'audio/webm';
           if (!MediaRecorder.isTypeSupported(mimeType)) {
-            mimeType = ''; // Use default
+            mimeType = 'audio/mp4';
+            if (!MediaRecorder.isTypeSupported(mimeType)) {
+              mimeType = '';
+            }
           }
         }
+
+        const options = mimeType ? { mimeType } : {};
+        mediaRecorderRef.current = new MediaRecorder(stream, options);
+        
+        audioChunksRef.current = [];
+        
+        mediaRecorderRef.current.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            audioChunksRef.current.push(event.data);
+          }
+        };
+
+        mediaRecorderRef.current.onerror = (event) => {
+          console.error('MediaRecorder error:', event);
+          setError('Recording failed');
+        };
+
+        mediaRecorderRef.current.start(100);
       }
 
-      const options = mimeType ? { mimeType } : {};
-      mediaRecorderRef.current = new MediaRecorder(stream, options);
-      
-      audioChunksRef.current = [];
-      
-      mediaRecorderRef.current.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorderRef.current.onerror = (event) => {
-        console.error('MediaRecorder error:', event);
-        setError('Recording failed');
-        setIsRecording(false);
-      };
-
-      mediaRecorderRef.current.start(100); // Collect data every 100ms
       setIsRecording(true);
-      console.log('Recording started with MIME type:', mimeType || 'default');
+      console.log('Recording started');
       
     } catch (err) {
       console.error('Error starting recording:', err);
@@ -113,6 +163,11 @@ export function useAudioRecording(): UseAudioRecordingReturn {
 
   const stopRecording = useCallback(async (): Promise<Blob | null> => {
     return new Promise((resolve) => {
+      // Stop speech recognition
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+
       if (!mediaRecorderRef.current || !isRecording) {
         resolve(null);
         return;
@@ -135,6 +190,7 @@ export function useAudioRecording(): UseAudioRecordingReturn {
         }
         
         setIsRecording(false);
+        setIsListening(false);
         setAudioLevel(0);
         console.log('Recording stopped, blob size:', audioBlob.size);
         resolve(audioBlob);
@@ -144,11 +200,18 @@ export function useAudioRecording(): UseAudioRecordingReturn {
     });
   }, [isRecording]);
 
+  const clearTranscript = useCallback(() => {
+    setTranscript('');
+  }, []);
+
   return {
     isRecording,
     startRecording,
     stopRecording,
     audioLevel,
-    error
+    error,
+    isListening,
+    transcript,
+    clearTranscript
   };
 }
